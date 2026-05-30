@@ -1,13 +1,225 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ─── SOC Dashboard Global Styles ─── */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg-base:       #080c10;
+  --bg-card:       #0d1117;
+  --bg-card-hover: #111820;
+  --bg-row:        #0f1620;
+  --bg-row-hover:  #141e2a;
+
+  --border:        rgba(56, 139, 253, 0.12);
+  --border-accent: rgba(56, 139, 253, 0.3);
+
+  --text-primary:   #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted:     #484f58;
+
+  --accent-blue:    #388bfd;
+  --accent-cyan:    #39d353;
+  --accent-red:     #f85149;
+  --accent-orange:  #db6d28;
+  --accent-yellow:  #e3b341;
+  --accent-purple:  #bc8cff;
+
+  --severity-critical: #f85149;
+  --severity-high:     #db6d28;
+  --severity-medium:   #e3b341;
+  --severity-low:      #39d353;
+
+  --attack-sqli:      #bc8cff;
+  --attack-xss:       #388bfd;
+  --attack-bruteforce:#f85149;
+  --attack-traversal: #e3b341;
+
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --font-ui:   'Syne', system-ui, sans-serif;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* ─── Loading ─── */
+.soc-loading {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; background: var(--bg-base);
+}
+.soc-loading-inner { text-align: center; }
+.soc-pulse {
+  width: 48px; height: 48px; border-radius: 50%;
+  border: 2px solid var(--accent-blue);
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.soc-loading-inner p { color: var(--text-secondary); font-family: var(--font-mono); font-size: 13px; }
+
+/* ─── Header ─── */
+.soc-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.875rem 1.5rem;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.soc-header-left  { display: flex; align-items: center; gap: 1.5rem; }
+.soc-header-right { display: flex; align-items: center; gap: 1rem; }
+
+.soc-logo { display: flex; align-items: center; gap: 0.5rem; }
+.soc-logo-icon { font-size: 20px; color: var(--accent-blue); }
+.soc-logo-text { font-size: 16px; font-weight: 600; letter-spacing: 0.02em; }
+.soc-logo-accent { color: var(--accent-blue); }
+
+.soc-status {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--accent-cyan); letter-spacing: 0.08em;
+}
+.soc-status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent-cyan);
+  animation: blink 1.5s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.soc-updated { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.soc-refresh-btn {
+  background: transparent; border: 1px solid var(--border-accent);
+  color: var(--accent-blue); font-family: var(--font-mono); font-size: 12px;
+  padding: 5px 12px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.15s;
+}
+.soc-refresh-btn:hover { background: rgba(56,139,253,0.1); }
+
+/* ─── Stats Bar ─── */
+.soc-stats-bar {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px; background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.soc-stat {
+  background: var(--bg-card); padding: 0.875rem 1.25rem;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.soc-stat-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; }
+.soc-stat-value { font-size: 24px; font-weight: 700; line-height: 1; }
+.soc-stat-sub   { font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary); }
+
+/* ─── Main Grid ─── */
+.soc-root { min-height: 100vh; }
+.soc-grid {
+  display: grid;
+  grid-template-columns: 220px 1fr 1fr;
+  grid-template-rows: auto auto auto;
+  gap: 1px; background: var(--border);
+  padding: 1px;
+}
+
+.soc-gauge-wrap    { grid-column: 1; grid-row: 1; }
+.soc-chart-wrap    { grid-column: 2; grid-row: 1; }
+.soc-timeline-wrap { grid-column: 3; grid-row: 1; }
+.soc-feed-wrap     { grid-column: 1 / 4; grid-row: 2; }
+.soc-profiles-wrap { grid-column: 1 / 4; grid-row: 3; }
+
+/* ─── Card ─── */
+.soc-card {
+  background: var(--bg-card);
+  padding: 1.25rem 1.5rem;
+  overflow: hidden;
+}
+.soc-card-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-secondary);
+  margin-bottom: 1rem;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.soc-badge {
+  font-family: var(--font-mono); font-size: 10px;
+  background: rgba(56,139,253,0.15); color: var(--accent-blue);
+  padding: 2px 7px; border-radius: 10px; font-weight: 400;
+}
+
+/* ─── Severity Pills ─── */
+.soc-pill {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  padding: 2px 8px; border-radius: 3px; letter-spacing: 0.05em;
+}
+.soc-pill-CRITICAL { background: rgba(248,81,73,0.15); color: var(--severity-critical); }
+.soc-pill-HIGH     { background: rgba(219,109,40,0.15); color: var(--severity-high); }
+.soc-pill-MEDIUM   { background: rgba(227,179,65,0.15); color: var(--severity-medium); }
+.soc-pill-LOW      { background: rgba(57,211,83,0.15); color: var(--severity-low); }
+
+/* ─── Attack Type Pills ─── */
+.soc-type-sqli       { color: var(--attack-sqli); }
+.soc-type-xss        { color: var(--attack-xss); }
+.soc-type-bruteforce { color: var(--attack-bruteforce); }
+.soc-type-traversal  { color: var(--attack-traversal); }
+
+/* ─── Tables ─── */
+.soc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.soc-table th {
+  text-align: left; font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 0 12px 10px; border-bottom: 1px solid var(--border);
+}
+.soc-table td {
+  padding: 9px 12px; border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 12px; color: var(--text-primary);
+  vertical-align: middle;
+}
+.soc-table tr:hover td { background: var(--bg-row-hover); }
+.soc-table tr:last-child td { border-bottom: none; }
+
+.soc-ip   { color: var(--accent-blue); font-weight: 500; }
+.soc-path { color: var(--text-secondary); }
+.soc-payload { color: var(--accent-yellow); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.soc-ts { color: var(--text-muted); font-size: 11px; }
+
+/* ─── Threat Score Bar ─── */
+.soc-score-bar-wrap { width: 60px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+.soc-score-bar { height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+/* ─── Scrollable Tables ─── */
+.soc-table-scroll { overflow-y: auto; max-height: 320px; }
+
+/* ─── Report Button ─── */
+.soc-report-btn {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px;
+  padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: all 0.15s;
+}
+.soc-report-btn:hover {
+  border-color: var(--accent-blue); color: var(--accent-blue);
+  background: rgba(56,139,253,0.08);
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 900px) {
+  .soc-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .soc-gauge-wrap    { grid-column: 1; grid-row: 1; }
+  .soc-chart-wrap    { grid-column: 2; grid-row: 1; }
+  .soc-timeline-wrap { grid-column: 1 / 3; grid-row: 2; }
+  .soc-feed-wrap     { grid-column: 1 / 3; grid-row: 3; }
+  .soc-profiles-wrap { grid-column: 1 / 3; grid-row: 4; }
+}
+@media (max-width: 600px) {
+  .soc-grid { grid-template-columns: 1fr; }
+  .soc-gauge-wrap, .soc-chart-wrap, .soc-timeline-wrap,
+  .soc-feed-wrap, .soc-profiles-wrap { grid-column: 1; }
 }
