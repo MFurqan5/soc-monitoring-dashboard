@@ -1,7 +1,7 @@
 // services/api.js
 // All API calls in one place — change BASE_URL to match your server
 
-const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:4000";
+const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 const api = {
   async getEvents({ limit = 50, attack_type, severity } = {}) {
