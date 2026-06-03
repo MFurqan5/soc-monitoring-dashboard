@@ -6,6 +6,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+
+
 // Global error handlers
 process.on("uncaughtException", (error) => {
   console.error("❌ Uncaught Exception:", error.message);
