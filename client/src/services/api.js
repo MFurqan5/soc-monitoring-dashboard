@@ -62,6 +62,18 @@ const api = {
     if (!res.ok) throw new Error("Failed to block IP");
     return res.json();
   },
+
+  async getHoneytokens() {
+    const res = await fetch(`${BASE_URL}/api/honeytokens`);
+    if (!res.ok) throw new Error("Failed to fetch honeytokens");
+    return res.json();
+  },
+
+  async getAttackerSessions(ip) {
+    const res = await fetch(`${BASE_URL}/api/sessions/ip/${encodeURIComponent(ip)}`);
+    if (!res.ok) throw new Error("Failed to fetch attacker sessions");
+    return res.json();
+  },
 };
 
 export default api;

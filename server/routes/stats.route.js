@@ -102,6 +102,32 @@ router.get("/", async (req, res) => {
       Math.round((rawScore / (totalCount * 4)) * 100),
     );
 
+    const { calculateThreatScore } = require("../services/threatScoring.service");
+    const topAttackersDetailed = await Promise.all(
+      topAttackers.rows.map(async (attacker) => {
+        const ip = attacker.source_ip;
+        const profileRes = await pool.query("SELECT * FROM attacker_profiles WHERE ip = $1", [ip]);
+        const attacksRes = await pool.query("SELECT * FROM attack_logs WHERE source_ip = $1 ORDER BY timestamp DESC LIMIT 50", [ip]);
+        
+        if (profileRes.rows.length > 0) {
+          const profile = profileRes.rows[0];
+          const calculatedThreatScore = calculateThreatScore(profile, attacksRes.rows);
+          return {
+            ...attacker,
+            threat_score: profile.threat_score,
+            calculatedThreatScore,
+            country: profile.country,
+            city: profile.city
+          };
+        }
+        return {
+          ...attacker,
+          threat_score: 0,
+          calculatedThreatScore: 0
+        };
+      })
+    );
+
     res.json({
       success: true,
       data: {
@@ -111,7 +137,7 @@ router.get("/", async (req, res) => {
         attackBreakdown: attackBreakdown.rows, // [{attack_type, count}]
         severityBreakdown: severityBreakdown.rows, // [{severity, count}]
         timeline: timelineData.rows, // [{hour, count}]
-        topAttackers: topAttackers.rows, // [{source_ip, count}]
+        topAttackers: topAttackersDetailed, // [{source_ip, count, threat_score, calculatedThreatScore, country, city}]
         topCountries: topCountries.rows, // [{country, count}]
       },
     });

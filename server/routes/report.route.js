@@ -4,289 +4,350 @@ const pool = require("../db/connection");
 const PDFDocument = require("pdfkit");
 
 // GET /api/report/:ip
-// Generate a professional CERT-format incident report as PDF
+// Generate a professional incident report as PDF
 router.get("/:ip", async (req, res) => {
   try {
     const { ip } = req.params;
 
-    // Get attacker profile
-    const profileResult = await pool.query(
-      `SELECT * FROM attacker_profiles WHERE ip = $1`,
-      [ip]
-    );
+    // Run queries in parallel
+    const [profileResult, eventsResult, tokensResult, tokenAlertsResult] = await Promise.all([
+      pool.query("SELECT * FROM attacker_profiles WHERE ip = $1", [ip]),
+      pool.query("SELECT * FROM attack_logs WHERE source_ip = $1 ORDER BY timestamp DESC LIMIT 20", [ip]),
+      pool.query("SELECT * FROM honeytokens WHERE attacker_ip = $1", [ip]),
+      pool.query("SELECT * FROM honeytoken_alerts WHERE attacker_ip = $1", [ip]),
+    ]);
 
     if (profileResult.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Attacker profile not found" });
+      return res.status(404).json({ success: false, error: "Attacker profile not found" });
     }
-
-    // Get all events from this attacker
-    const eventsResult = await pool.query(
-      `SELECT * FROM attack_logs WHERE source_ip = $1 ORDER BY timestamp DESC`,
-      [ip]
-    );
 
     const profile = profileResult.rows[0];
     const events = eventsResult.rows;
+    const tokens = tokensResult.rows;
+    const tokenAlerts = tokenAlertsResult.rows;
 
-    // Create PDF document
     const doc = new PDFDocument({
       size: "A4",
-      margin: 50,
+      margin: 40,
+      bufferPages: true // Allows dynamic page numbering in footer
     });
 
-    // Set response headers for PDF download
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="threat-report-${ip}.pdf"`
-    );
+    res.setHeader("Content-Disposition", `attachment; filename="threat-report-${ip}.pdf"`);
 
     doc.pipe(res);
 
-    // Title Page
-    doc.fontSize(28).font("Helvetica-Bold").text("INCIDENT REPORT", {
-      align: "center",
-    });
-    doc.moveDown(0.5);
-    doc
-      .fontSize(14)
-      .font("Helvetica")
-      .text("Security Threat Analysis & Attribution", {
-        align: "center",
-      });
-    doc.moveDown(2);
+    // --- COLOR PALETTE ---
+    const primaryColor = "#0d1117";
+    const accentColor = "#388bfd";
+    const mutedColor = "#8b949e";
+    const lightBg = "#161b22";
+    const borderColor = "rgba(56, 139, 253, 0.15)";
+    
+    const severityColors = {
+      CRITICAL: "#f85149",
+      HIGH: "#db6d28",
+      MEDIUM: "#e3b341",
+      LOW: "#39d353"
+    };
 
-    doc
-      .fontSize(11)
-      .text(`Report Generated: ${new Date().toISOString()}`, {
-        align: "center",
-      });
-    doc
-      .fontSize(11)
-      .text(`Attacker IP: ${ip}`, { align: "center" })
-      .moveDown(3);
+    // Get Risk Level Label
+    const threatScore = profile.threat_score;
+    let threatLevel = "LOW";
+    if (threatScore >= 80) threatLevel = "CRITICAL";
+    else if (threatScore >= 60) threatLevel = "HIGH";
+    else if (threatScore >= 40) threatLevel = "MEDIUM";
+    const threatColor = severityColors[threatLevel];
 
-    // Executive Summary Section
-    doc
-      .fontSize(16)
-      .font("Helvetica-Bold")
-      .text("1. EXECUTIVE SUMMARY", { underline: true });
-    doc.moveDown(0.5);
-    doc
-      .fontSize(11)
-      .font("Helvetica")
-      .text(
-        `This report documents a confirmed cyber threat originating from IP address ${ip}. The attacker has demonstrated sophisticated attack techniques and persistence, posing a significant risk to system security.`,
-        { align: "left", width: 500 }
-      );
-    doc.moveDown(1);
+    // --- 1. HEADER ---
+    doc.fillColor(primaryColor).rect(0, 0, 595.28, 90).fill(); // Navy base band
+    doc.fillColor("#ffffff").fontSize(20).font("Helvetica-Bold").text("THREAT INTELLIGENCE REPORT", 40, 25);
+    doc.fillColor(accentColor).fontSize(10).font("Helvetica-Bold").text("SecureBank SOC Incident Response", 40, 50);
+    doc.fillColor(mutedColor).fontSize(9).font("Helvetica").text(`Generated: ${new Date().toUTCString()}`, 40, 65);
+    doc.fillColor("#f85149").fontSize(10).font("Helvetica-Bold").text("CLASSIFICATION: CONFIDENTIAL", 420, 25, { align: "right" });
+    doc.fillColor("#ffffff").fontSize(9).font("Helvetica").text(`Target IP: ${ip}`, 420, 40, { align: "right" });
+    doc.y = 110;
 
-    doc
-      .fontSize(12)
-      .font("Helvetica-Bold")
-      .text("Risk Level: ");
-    doc
-      .font("Helvetica")
-      .fontSize(11)
-      .fillColor(getRiskColor(profile.threat_score))
-      .text(
-        `${getRiskLevel(profile.threat_score)} (Threat Score: ${profile.threat_score}/100)`,
-        { continued: false }
-      );
-    doc.fillColor("black").moveDown(1.5);
+    // --- 2. EXECUTIVE SUMMARY (Box with light background) ---
+    doc.fillColor(lightBg).rect(40, doc.y, 515, 110).fill();
+    doc.fillColor("#388bfd").fontSize(11).font("Helvetica-Bold").text("1. EXECUTIVE SUMMARY", 50, doc.y + 10);
+    
+    // Summary details
+    doc.fillColor("#ffffff").fontSize(9).font("Helvetica");
+    doc.text(`Attacker IP: ${ip}`, 55, doc.y + 15);
+    doc.text(`Country: ${profile.country || "Unknown"} / ${profile.city || "Unknown"}`, 55, doc.y + 30);
+    doc.text(`ISP/Provider: ${profile.isp || "Unknown"}`, 55, doc.y + 45);
+    
+    doc.text(`First Seen: ${new Date(profile.first_seen).toUTCString()}`, 275, doc.y + 15);
+    doc.text(`Last Seen: ${new Date(profile.last_seen).toUTCString()}`, 275, doc.y + 30);
+    doc.text(`Total Requests: ${profile.total_requests}`, 275, doc.y + 45);
+    
+    doc.fillColor(threatColor).fontSize(10).font("Helvetica-Bold").text(`Overall Threat Level: ${threatLevel}`, 55, doc.y + 80);
+    
+    doc.y = doc.y + 130;
 
-    // Attacker Profile Section
-    doc
-      .fontSize(16)
-      .font("Helvetica-Bold")
-      .text("2. ATTACKER PROFILE", { underline: true });
-    doc.moveDown(0.5);
+    // --- 3. THREAT SCORE CARD ---
+    doc.fillColor(borderColor).rect(40, doc.y, 515, 60).stroke();
+    doc.fillColor(threatColor).fontSize(28).font("Helvetica-Bold").text(`${threatScore}`, 60, doc.y + 10);
+    doc.fillColor(mutedColor).fontSize(10).font("Helvetica").text("/ 100", 110, doc.y + 25);
+    
+    doc.fillColor("#ffffff").fontSize(11).font("Helvetica-Bold").text(`Threat Level: ${threatLevel}`, 160, doc.y + 12);
+    let scoreDesc = "Attacker exhibits passive scanning or minor reconnaissance.";
+    if (threatLevel === "CRITICAL") scoreDesc = "Attacker is performing direct, high-impact exploits and triggering active deception traps.";
+    else if (threatLevel === "HIGH") scoreDesc = "Attacker is actively running persistent penetration tools targeting user databases.";
+    else if (threatLevel === "MEDIUM") scoreDesc = "Attacker is submitting automated brute-force attacks and parameter injection.";
+    doc.fillColor(mutedColor).fontSize(9).font("Helvetica").text(scoreDesc, 160, doc.y + 28, { width: 380 });
+    
+    doc.y = doc.y + 80;
 
-    const profileTable = [
-      ["Attribute", "Value"],
-      ["IP Address", ip],
-      ["Country", profile.country || "UNKNOWN"],
-      ["City", profile.city || "UNKNOWN"],
-      ["ISP", profile.isp || "UNKNOWN"],
-      ["Operating System", profile.os || "UNKNOWN"],
-      ["Attack Tool", profile.tool || "UNKNOWN"],
-      ["Known Malicious", profile.is_known_malicious ? "YES" : "NO"],
-      ["Total Requests", String(profile.total_requests)],
-      ["First Seen", new Date(profile.first_seen).toISOString()],
-      ["Last Seen", new Date(profile.last_seen).toISOString()],
-    ];
-
-    drawTable(doc, profileTable, 50, 350);
-    doc.moveDown(3);
-
-    // Attack Breakdown Section
-    doc
-      .fontSize(16)
-      .font("Helvetica-Bold")
-      .text("3. ATTACK BREAKDOWN", { underline: true });
-    doc.moveDown(0.5);
+    // --- 4. ATTACK BREAKDOWN ---
+    doc.fillColor("#388bfd").fontSize(11).font("Helvetica-Bold").text("2. ATTACK BREAKDOWN", 40, doc.y);
+    doc.y = doc.y + 15;
 
     const breakdownTable = [
-      ["Attack Type", "Count"],
-      [
-        "SQL Injection",
-        String(profile.sqli_count),
-      ],
-      ["Cross-Site Scripting (XSS)", String(profile.xss_count)],
-      ["Brute Force", String(profile.bruteforce_count)],
-      ["Directory Traversal", String(profile.traversal_count)],
+      ["Exploit Vector", "Telemetry Count"],
+      ["SQL Injection", String(profile.sqli_count || 0)],
+      ["Cross-Site Scripting (XSS)", String(profile.xss_count || 0)],
+      ["Brute Force Credentials", String(profile.bruteforce_count || 0)],
+      ["Directory Traversal", String(profile.traversal_count || 0)],
+      ["CSRF Attempts", String(profile.csrf_count || 0)],
+      ["IDOR Manipulation", String(profile.idor_count || 0)]
     ];
 
-    drawTable(doc, breakdownTable, 50, 600);
-    doc.moveDown(2);
+    drawTable(doc, breakdownTable, 40, doc.y, [280, 235]);
+    doc.y = doc.y + 160;
 
-    // Add new page for detailed events
+    // --- 5. ATTACK TIMELINE (Last 20 events) ---
     doc.addPage();
+    // Band header for other pages
+    doc.fillColor(primaryColor).rect(0, 0, 595.28, 45).fill();
+    doc.fillColor("#ffffff").fontSize(12).font("Helvetica-Bold").text("THREAT REPORT: DETAILED TELEMETRY", 40, 16);
+    doc.y = 70;
 
-    // Recent Attacks Timeline Section
-    doc
-      .fontSize(16)
-      .font("Helvetica-Bold")
-      .text("4. ATTACK TIMELINE", { underline: true });
-    doc.moveDown(0.5);
+    doc.fillColor("#388bfd").fontSize(11).font("Helvetica-Bold").text("3. DETAILED EVENT FEED (LAST 20 EVENTS)", 40, doc.y);
+    doc.y = doc.y + 20;
 
-    doc.fontSize(10).font("Helvetica");
-    events.slice(0, 10).forEach((event, idx) => {
-      doc.text(
-        `${idx + 1}. [${new Date(event.timestamp).toISOString()}] ${event.method} ${event.path}`,
-        { width: 500 }
-      );
-      doc.text(`   Type: ${event.attack_type.toUpperCase()} | Severity: ${event.severity}`, {
-        width: 500,
+    if (events.length === 0) {
+      doc.fillColor(mutedColor).fontSize(9).font("Helvetica").text("No recent events logged.", 45, doc.y);
+      doc.y = doc.y + 20;
+    } else {
+      doc.fontSize(8).font("Helvetica");
+      events.forEach((event, idx) => {
+        if (doc.y > 750) {
+          doc.addPage();
+          doc.fillColor(primaryColor).rect(0, 0, 595.28, 45).fill();
+          doc.fillColor("#ffffff").fontSize(12).font("Helvetica-Bold").text("THREAT REPORT: DETAILED TELEMETRY", 40, 16);
+          doc.y = 70;
+        }
+
+        const dateStr = new Date(event.timestamp).toLocaleTimeString();
+        const payloadSnippet = event.payload ? event.payload.replace(/\n/g, " ").substring(0, 80) : "N/A";
+        const severityLabel = event.severity_label || "LOW";
+        
+        doc.fillColor("#ffffff").text(`[${dateStr}]`, 40, doc.y, { continued: true });
+        doc.fillColor(accentColor).text(` ${event.method} `, { continued: true });
+        doc.fillColor("#ffffff").text(`${event.path} `, { continued: true });
+        doc.fillColor(severityColors[severityLabel] || mutedColor).text(`[${severityLabel}]`, { continued: true });
+        doc.fillColor(mutedColor).text(` — ${payloadSnippet}`, { width: 515 });
+        doc.y = doc.y + 13;
       });
-      if (event.payload) {
-        doc.text(`   Payload: ${event.payload.substring(0, 100)}...`, {
-          width: 500,
-        });
-      }
-      doc.moveDown(0.3);
+    }
+
+    doc.y = doc.y + 15;
+
+    // --- 6. INDICATORS OF COMPROMISE (IOCs) ---
+    if (doc.y > 600) {
+      doc.addPage();
+      doc.fillColor(primaryColor).rect(0, 0, 595.28, 45).fill();
+      doc.fillColor("#ffffff").fontSize(12).font("Helvetica-Bold").text("THREAT REPORT: DETAILED TELEMETRY", 40, 16);
+      doc.y = 70;
+    }
+
+    doc.fillColor("#388bfd").fontSize(11).font("Helvetica-Bold").text("4. INDICATORS OF COMPROMISE (IOCs)", 40, doc.y);
+    doc.y = doc.y + 15;
+
+    // List out tools and client details
+    doc.fillColor("#ffffff").fontSize(9).font("Helvetica");
+    doc.text(`• Identified Tool Signature: ${profile.tool || "Generic script/manual request"}`, 50, doc.y);
+    doc.text(`• User-Agent / OS Fingerprint: ${profile.os || "Unknown OS"}`, 50, doc.y + 15);
+    
+    // Unique paths and payloads
+    const uniquePaths = [...new Set(events.map(e => e.path))].slice(0, 5);
+    doc.text(`• Target Endpoints Sampled:`, 50, doc.y + 30);
+    uniquePaths.forEach((path, idx) => {
+      doc.text(`   - ${path}`, 60, doc.y + 45 + (idx * 12));
     });
 
-    if (events.length > 10) {
-      doc.text(`... and ${events.length - 10} more attacks`, {
-        width: 500,
-        italic: true,
-      });
+    const startFlagsY = doc.y + 50 + (uniquePaths.length * 12);
+    doc.text(`• Security Flag Identifiers:`, 50, startFlagsY);
+    doc.text(`   - Attempted Account Takeover (ATO): ${profile.attempted_account_takeover ? "YES" : "NO"}`, 60, startFlagsY + 15);
+    doc.text(`   - Attempted Funds Transfer: ${profile.attempted_funds_transfer ? "YES" : "NO"}`, 60, startFlagsY + 27);
+    doc.text(`   - Privilege Escalation Probe: ${profile.attempted_privilege_escalation ? "YES" : "NO"}`, 60, startFlagsY + 39);
+
+    doc.y = startFlagsY + 60;
+
+    // --- 7. HONEYTOKEN ACTIVITY ---
+    if (doc.y > 620) {
+      doc.addPage();
+      doc.fillColor(primaryColor).rect(0, 0, 595.28, 45).fill();
+      doc.fillColor("#ffffff").fontSize(12).font("Helvetica-Bold").text("THREAT REPORT: DETAILED TELEMETRY", 40, 16);
+      doc.y = 70;
     }
-    doc.moveDown(2);
 
-    // Indicators of Compromise (IOCs)
-    doc
-      .fontSize(16)
-      .font("Helvetica-Bold")
-      .text("5. INDICATORS OF COMPROMISE (IOCs)", { underline: true });
-    doc.moveDown(0.5);
+    doc.fillColor("#388bfd").fontSize(11).font("Helvetica-Bold").text("5. HONEYTOKEN & DECEPTION LOGS", 40, doc.y);
+    doc.y = doc.y + 15;
 
-    doc.fontSize(10).font("Helvetica").text(`IP Addresses:\n• ${ip}\n`);
+    if (tokens.length === 0 && tokenAlerts.length === 0) {
+      doc.fillColor(mutedColor).fontSize(9).font("Helvetica").text("No deception assets or honeytoken triggers associated with this attacker.", 50, doc.y);
+      doc.y = doc.y + 20;
+    } else {
+      doc.fillColor("#ffffff").fontSize(9).font("Helvetica");
+      doc.text(`Deception Assets Planted: ${tokens.length} token(s)`, 50, doc.y);
+      doc.text(`Triggered Deception Alerts: ${tokenAlerts.length} alert(s)`, 50, doc.y + 15);
+      doc.y = doc.y + 35;
 
-    const payloads = events
-      .filter((e) => e.payload)
-      .map((e) => e.payload)
-      .slice(0, 5);
-    if (payloads.length > 0) {
-      doc.text(`Malicious Payloads:\n`);
-      payloads.forEach((p) => {
-        doc.text(`• ${p.substring(0, 80)}...`);
-      });
+      if (tokenAlerts.length > 0) {
+        const honeytokenTable = [
+          ["Token ID", "Type", "Triggered At", "Severity"],
+          ...tokenAlerts.map(ta => {
+            const tk = tokens.find(t => t.id === ta.honeytoken_id) || { type: "Unknown" };
+            return [
+              String(ta.honeytoken_id).substring(0, 8) + "...",
+              String(tk.type),
+              new Date(ta.triggered_at).toLocaleTimeString(),
+              String(ta.severity)
+            ];
+          })
+        ];
+        drawTable(doc, honeytokenTable, 40, doc.y, [120, 120, 150, 125]);
+        doc.y = doc.y + 60 + (tokenAlerts.length * 20);
+      }
     }
-    doc.moveDown(1.5);
 
-    // Recommendations Section
-    doc
-      .fontSize(16)
-      .font("Helvetica-Bold")
-      .text("6. RECOMMENDATIONS", { underline: true });
-    doc.moveDown(0.5);
-    doc.fontSize(11).font("Helvetica");
-    doc.text("Immediate Actions:", { underline: true });
-    doc.text("1. Block this IP address at firewall and WAF level");
-    doc.text("2. Review all access logs for this IP for breach indicators");
-    doc.text("3. Check for any successful authentication using stolen credentials");
-    doc.moveDown(0.5);
-    doc.text("Follow-up Actions:", { underline: true });
-    doc.text("1. Monitor for any return attempts from this IP or related IPs");
-    doc.text("2. Share IOCs with threat intelligence feeds");
-    doc.text("3. Implement advanced rate limiting and behavioral analysis");
-    doc.moveDown(2);
+    // --- 8. RISK ASSESSMENT (Dynamic based on attack types) ---
+    if (doc.y > 550) {
+      doc.addPage();
+      doc.fillColor(primaryColor).rect(0, 0, 595.28, 45).fill();
+      doc.fillColor("#ffffff").fontSize(12).font("Helvetica-Bold").text("THREAT REPORT: DETAILED TELEMETRY", 40, 16);
+      doc.y = 70;
+    }
 
-    // Footer
-    doc
-      .fontSize(9)
-      .font("Helvetica")
-      .text(
-        "This report is classified as SECURITY SENSITIVE. Unauthorized distribution is prohibited.",
-        { align: "center" }
-      );
-    doc.text(
-      `Generated by SOC Monitoring Dashboard - ${new Date().toLocaleString()}`,
-      { align: "center" }
-    );
+    doc.fillColor("#388bfd").fontSize(11).font("Helvetica-Bold").text("6. SECURITY RISK ASSESSMENT", 40, doc.y);
+    doc.y = doc.y + 15;
 
-    // Finalize PDF
+    const hasSqli = (profile.sqli_count || 0) > 0;
+    const hasXss = (profile.xss_count || 0) > 0;
+    const hasBruteforce = (profile.bruteforce_count || 0) > 0;
+    const hasTraversal = (profile.traversal_count || 0) > 0;
+
+    let riskAssessmentText = "";
+    if (hasSqli) {
+      riskAssessmentText += "SQL Injection (SQLi) attempts indicate that the attacker is trying to bypass database layer controls. If successful, this can lead to full database exfiltration, credential leakage, and potential backend database host takeover. The threat level is heightened due to the targeted database-probing behaviors.\n\n";
+    }
+    if (hasBruteforce) {
+      riskAssessmentText += "Brute Force attempts suggest active efforts to perform account takeover against employees or customers. This indicates a high level of threat regarding authentication system compromises, key stuffing, or brute force credential discovery.\n\n";
+    }
+    if (hasTraversal) {
+      riskAssessmentText += "Directory Traversal attempts indicate that the attacker is probing the system for path exposure, configuration file leakage, or arbitrary file reads. This can expose sensitive host system configurations or API keys stored in local environment directories.\n\n";
+    }
+    if (hasXss) {
+      riskAssessmentText += "Cross-Site Scripting (XSS) payload delivery indicates that the attacker attempts to perform client-side hijacking, session steal attempts, or phishing redirects targeting active users of the banking application.\n\n";
+    }
+    if (!riskAssessmentText) {
+      riskAssessmentText = "The system has logged general scanning and probing actions. While no high-impact exploits were successfully validated, the persistent recon patterns pose a low-to-medium risk of future targeted exploitation if security patches are not applied.\n";
+    }
+
+    doc.fillColor("#ffffff").fontSize(9).font("Helvetica").text(riskAssessmentText, 50, doc.y, { width: 505 });
+    doc.y = doc.y + 100;
+
+    // --- 9. RECOMMENDATIONS ---
+    if (doc.y > 600) {
+      doc.addPage();
+      doc.fillColor(primaryColor).rect(0, 0, 595.28, 45).fill();
+      doc.fillColor("#ffffff").fontSize(12).font("Helvetica-Bold").text("THREAT REPORT: DETAILED TELEMETRY", 40, 16);
+      doc.y = 70;
+    }
+
+    doc.fillColor("#388bfd").fontSize(11).font("Helvetica-Bold").text("7. ACTIONS & REMEDIATION RECOMMENDATIONS", 40, doc.y);
+    doc.y = doc.y + 15;
+
+    const recommendations = [];
+    if (hasSqli) {
+      recommendations.push("Implement strictly parameterised queries and prepared statements across all database interfaces.");
+      recommendations.push("Review database access controls and enforce the principle of least privilege.");
+    }
+    if (hasXss) {
+      recommendations.push("Implement strict Content Security Policy (CSP) headers and escape all dynamic user outputs.");
+      recommendations.push("Set HttpOnly and Secure flags on all session cookies to mitigate session theft.");
+    }
+    if (hasBruteforce) {
+      recommendations.push("Enforce account lockout policies after 5 failed authentication attempts.");
+      recommendations.push("Enforce Multi-Factor Authentication (MFA) for administrative and user portals.");
+    }
+    if (hasTraversal) {
+      recommendations.push("Apply strict input validation on file download endpoints to whitelist allowed files.");
+      recommendations.push("Run the application services in a restricted directory jail (e.g. chroot, container isolate).");
+    }
+    recommendations.push("Deploy a Web Application Firewall (WAF) to filter out automated exploit scripts.");
+    recommendations.push("Block the malicious IP at the edge firewall level and report to AbuseIPDB.");
+
+    doc.fillColor("#ffffff").fontSize(9).font("Helvetica");
+    recommendations.forEach((rec, idx) => {
+      doc.text(`${idx + 1}. ${rec}`, 50, doc.y + (idx * 15), { width: 500 });
+    });
+
+    // --- 10. DYNAMIC FOOTER & PAGE NUMBERS ---
+    const pageCount = doc.bufferedPageRange().count;
+    for (let i = 0; i < pageCount; i++) {
+      doc.switchToPage(i);
+      doc.fillColor(mutedColor).fontSize(8).font("Helvetica");
+      doc.text("Generated by SecureBank SOC Platform", 40, 800);
+      doc.text(`Page ${i + 1} of ${pageCount}`, 40, 800, { align: "right", width: 515 });
+    }
+
     doc.end();
   } catch (err) {
     console.error("[report] Error:", err.message);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to generate report" });
+    res.status(500).json({ success: false, error: "Failed to generate report" });
   }
 });
 
-// Helper function to get risk level based on threat score
-function getRiskLevel(score) {
-  if (score >= 80) return "CRITICAL";
-  if (score >= 60) return "HIGH";
-  if (score >= 40) return "MEDIUM";
-  return "LOW";
-}
-
-// Helper function to get color for risk level
-function getRiskColor(score) {
-  if (score >= 80) return "#ff0000"; // RED
-  if (score >= 60) return "#ff9900"; // ORANGE
-  if (score >= 40) return "#ffcc00"; // YELLOW
-  return "#00cc00"; // GREEN
-}
-
 // Helper function to draw table in PDF
-function drawTable(doc, data, x, y, colWidths = [250, 200]) {
-  const rowHeight = 20;
-  const fontSize = 10;
-
+function drawTable(doc, data, x, y, colWidths) {
+  const rowHeight = 18;
+  const fontSize = 8.5;
   doc.fontSize(fontSize);
 
-  // Draw header
-  doc.fillColor("#333333");
-  data[0].forEach((header, i) => {
-    doc.text(header, x + (colWidths[i] ? colWidths.slice(0, i).reduce((a, b) => a + b, 0) : 0), y, {
-      width: colWidths[i] || 200,
-      align: "left",
-    });
+  // Draw header row
+  const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+  doc.fillColor("#161b22").rect(x, y, totalWidth, rowHeight).fill();
+  doc.fillColor("#388bfd").font("Helvetica-Bold");
+  
+  let currentX = x;
+  data[0].forEach((headerText, colIdx) => {
+    doc.text(headerText, currentX + 6, y + 4, { width: colWidths[colIdx] - 12 });
+    currentX += colWidths[colIdx];
   });
 
-  doc.moveTo(x, y + rowHeight - 2).lineTo(x + colWidths.reduce((a, b) => a + b, 0), y + rowHeight - 2).stroke();
-
-  // Draw rows
+  // Draw data rows
+  doc.font("Helvetica");
   let currentY = y + rowHeight;
-  for (let i = 1; i < data.length; i++) {
-    doc.fillColor("#000000");
-    data[i].forEach((cell, j) => {
-      doc.text(cell || "", x + (colWidths[j] ? colWidths.slice(0, j).reduce((a, b) => a + b, 0) : 0), currentY, {
-        width: colWidths[j] || 200,
-        align: "left",
-      });
+  for (let rowIdx = 1; rowIdx < data.length; rowIdx++) {
+    // Alternate backgrounds
+    if (rowIdx % 2 === 0) {
+      doc.fillColor("#0f1620").rect(x, currentY, totalWidth, rowHeight).fill();
+    }
+    
+    doc.fillColor("#8b949e").rect(x, currentY + rowHeight - 0.5, totalWidth, 0.5).fill(); // border line
+
+    doc.fillColor("#ffffff");
+    currentX = x;
+    data[rowIdx].forEach((cellText, colIdx) => {
+      doc.text(cellText || "", currentX + 6, currentY + 4, { width: colWidths[colIdx] - 12 });
+      currentX += colWidths[colIdx];
     });
     currentY += rowHeight;
   }
-
-  doc.moveTo(x, currentY).lineTo(x + colWidths.reduce((a, b) => a + b, 0), currentY).stroke();
 }
 
 module.exports = router;

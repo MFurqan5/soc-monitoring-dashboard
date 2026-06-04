@@ -39,9 +39,17 @@ try {
   app.use("/api/sessions", require("./routes/sessions.route"));
   console.log("✓ Sessions route loaded");
 
+  app.use("/api/honeytokens", require("./routes/honeytokens.route"));
+  console.log("✓ Honeytokens route loaded");
+
   const PORT = process.env.SOC_PORT || 5000;
   
-  const server = app.listen(PORT, () => {
+  const http = require("http");
+  const { initSocket } = require("./socket/liveEvents");
+  const server = http.createServer(app);
+  initSocket(server);
+
+  server.listen(PORT, () => {
     console.log(`\n✅ SOC Server running on port ${PORT}`);
     console.log(`🌐 http://localhost:${PORT}`);
     console.log(`✓ All routes loaded successfully\n`);

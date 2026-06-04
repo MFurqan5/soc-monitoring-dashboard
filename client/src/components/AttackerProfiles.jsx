@@ -1,12 +1,14 @@
 // components/AttackerProfiles.jsx
 import { useState } from "react";
 import api from "../services/api";
+import SessionTimeline from "./SessionTimeline";
 
 export default function AttackerProfiles({ attackers }) {
   const [blockingIp, setBlockingIp] = useState(null);
   const [reportingIp, setReportingIp] = useState(null);
   const [blockedIps, setBlockedIps] = useState(new Set());
   const [notification, setNotification] = useState(null);
+  const [replaySession, setReplaySession] = useState(null); // { sessionId, ip }
 
   const handleBlock = async (ip) => {
     setBlockingIp(ip);
@@ -30,6 +32,22 @@ export default function AttackerProfiles({ attackers }) {
       showNotification(`Failed to generate report for ${ip}`, "error");
     } finally {
       setReportingIp(null);
+    }
+  };
+
+  const handleReplay = async (ip) => {
+    try {
+      const result = await api.getAttackerSessions(ip);
+      const sessions = result.sessions || [];
+      if (sessions.length === 0) {
+        showNotification(`No recorded sessions found for ${ip}`, "error");
+        return;
+      }
+      // Open the most recent session
+      const latest = sessions[0];
+      setReplaySession({ sessionId: latest.sessionId, ip });
+    } catch {
+      showNotification(`Failed to load sessions for ${ip}`, "error");
     }
   };
 
@@ -278,6 +296,14 @@ export default function AttackerProfiles({ attackers }) {
                             ? "Blocked"
                             : "⊘ Block"}
                       </button>
+                      <button
+                        className="soc-report-btn"
+                        onClick={() => handleReplay(a.ip)}
+                        title="Replay session"
+                        style={{ color: "#388bfd", borderColor: "rgba(56,139,253,0.3)" }}
+                      >
+                        ▶ Replay
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -286,6 +312,15 @@ export default function AttackerProfiles({ attackers }) {
           </tbody>
         </table>
       </div>
+
+      {/* Session Timeline Modal */}
+      {replaySession && (
+        <SessionTimeline
+          sessionId={replaySession.sessionId}
+          attackerIp={replaySession.ip}
+          onClose={() => setReplaySession(null)}
+        />
+      )}
     </div>
   );
 }
