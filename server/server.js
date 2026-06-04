@@ -36,9 +36,6 @@ try {
   app.use("/api/block", require("./routes/block.route"));
   console.log("✓ Block route loaded");
   
-  app.use("/api/honeytokels", require("./routes/honeytokens.route"));
-  console.log("✓ Honeytokels route loaded");
-  
   app.use("/api/sessions", require("./routes/sessions.route"));
   console.log("✓ Sessions route loaded");
 
