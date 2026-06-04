@@ -34,10 +34,10 @@ function initSocket(httpServer) {
         ORDER BY count DESC
       `),
       pool.query(`
-        SELECT severity, COUNT(*) AS count
+        SELECT severity_label, COUNT(*) AS count
         FROM attack_logs
-        GROUP BY severity
-        ORDER BY CASE severity
+        GROUP BY severity_label
+        ORDER BY CASE severity_label
           WHEN 'CRITICAL' THEN 1
           WHEN 'HIGH'     THEN 2
           WHEN 'MEDIUM'   THEN 3
@@ -78,7 +78,7 @@ function initSocket(httpServer) {
 
     const severityRows = severityBreakdown.rows;
     const getCount = (level) => {
-      const row = severityRows.find((r) => r.severity === level);
+      const row = severityRows.find((r) => r.severity_label === level);
       return row ? parseInt(row.count) : 0;
     };
 

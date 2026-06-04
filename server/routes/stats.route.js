@@ -31,10 +31,10 @@ router.get("/", async (req, res) => {
 
       // 3. Count per severity level → for threat gauge
       pool.query(`
-        SELECT severity, COUNT(*) AS count
+        SELECT severity_label, COUNT(*) AS count
         FROM attack_logs
-        GROUP BY severity
-        ORDER BY CASE severity
+        GROUP BY severity_label
+        ORDER BY CASE severity_label
           WHEN 'CRITICAL' THEN 1
           WHEN 'HIGH'     THEN 2
           WHEN 'MEDIUM'   THEN 3
@@ -84,7 +84,7 @@ router.get("/", async (req, res) => {
     // Calculate a simple overall threat level (0–100) from severity breakdown
     const severityRows = severityBreakdown.rows;
     const getCount = (level) => {
-      const row = severityRows.find((r) => r.severity === level);
+      const row = severityRows.find((r) => r.severity_label === level);
       return row ? parseInt(row.count) : 0;
     };
 

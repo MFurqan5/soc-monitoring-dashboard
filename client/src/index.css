@@ -10,6 +10,7 @@
 
   --border:        rgba(56, 139, 253, 0.12);
   --border-accent: rgba(56, 139, 253, 0.3);
+  --border-color:  rgba(56, 139, 253, 0.12);
 
   --text-primary:   #e6edf3;
   --text-secondary: #8b949e;
@@ -564,4 +565,4 @@ body {
   color: #f85149;
 }
 
-
+
