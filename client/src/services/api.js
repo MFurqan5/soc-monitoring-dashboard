@@ -55,6 +55,31 @@ const api = {
     window.URL.revokeObjectURL(url);
   },
 
+  async downloadLogsReport() {
+    const res = await fetch(`${BASE_URL}/api/report/logs`);
+    if (!res.ok) throw new Error("Failed to generate logs report");
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "attack-logs-report.pdf";
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
+
+  async downloadProfilesReport() {
+    const res = await fetch(`${BASE_URL}/api/report/profiles`);
+    if (!res.ok) throw new Error("Failed to generate profiles report");
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "attacker-profiles-report.pdf";
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
+
+
   async blockIP(ip) {
     const res = await fetch(`${BASE_URL}/api/block/${encodeURIComponent(ip)}`, {
       method: "POST",

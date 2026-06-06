@@ -1,5 +1,6 @@
 // components/LiveEventFeed.jsx
 import { useState, useEffect, useMemo } from "react";
+import api from "../services/api";
 
 const ATTACK_LABELS = {
   sqli: "SQL Injection",
@@ -230,10 +231,34 @@ export default function LiveEventFeed({ events, onAttackTypeSelect }) {
           </button>
         )}
 
+        {/* Export PDF Button */}
+        <button
+          onClick={async () => {
+            try {
+              await api.downloadLogsReport();
+            } catch (err) {
+              alert("Error generating PDF: " + err.message);
+            }
+          }}
+          className="soc-refresh-btn"
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            borderColor: "var(--accent-blue)",
+            color: "var(--accent-blue)",
+            padding: "5px 12px",
+            height: "28px",
+            fontSize: "11px"
+          }}
+        >
+          📄 Export Logs to PDF
+        </button>
+
         {/* Event Count */}
         <span
           style={{
-            marginLeft: "auto",
             fontFamily: "var(--font-mono)",
             fontSize: "11px",
             color: "var(--text-muted)",

@@ -86,6 +86,31 @@ export default function AttackerProfiles({ attackers }) {
         </div>
       )}
 
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1rem" }}>
+        <button
+          onClick={async () => {
+            try {
+              await api.downloadProfilesReport();
+            } catch (err) {
+              alert("Error generating PDF: " + err.message);
+            }
+          }}
+          className="soc-refresh-btn"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            borderColor: "var(--accent-blue)",
+            color: "var(--accent-blue)",
+            padding: "5px 12px",
+            height: "28px",
+            fontSize: "11px"
+          }}
+        >
+          📄 Export All Profiles to PDF
+        </button>
+      </div>
+
       <div className="soc-table-scroll">
         <table className="soc-table">
           <thead>
