@@ -82,7 +82,7 @@ router.get("/", async (req, res) => {
     ]);
 
     // Calculate a simple overall threat level (0–100) from severity breakdown
-    const severityRows = severityBreakdown.rows;
+    const severityRows = severityBreakdown?.rows || [];
     const getCount = (level) => {
       const row = severityRows.find((r) => r.severity_label === level);
       return row ? parseInt(row.count) : 0;
@@ -92,7 +92,7 @@ router.get("/", async (req, res) => {
     const highCount = getCount("HIGH");
     const mediumCount = getCount("MEDIUM");
     const lowCount = getCount("LOW");
-    const totalCount = parseInt(totalEvents.rows[0].total) || 1;
+    const totalCount = parseInt(totalEvents?.rows?.[0]?.total) || 1;
 
     // Weighted score: CRITICAL=4pts HIGH=3pts MEDIUM=2pts LOW=1pt, capped at 100
     const rawScore =
@@ -104,41 +104,54 @@ router.get("/", async (req, res) => {
 
     const { calculateThreatScore } = require("../services/threatScoring.service");
     const topAttackersDetailed = await Promise.all(
-      topAttackers.rows.map(async (attacker) => {
+      (topAttackers?.rows || []).map(async (attacker) => {
         const ip = attacker.source_ip;
-        const profileRes = await pool.query("SELECT * FROM attacker_profiles WHERE ip = $1", [ip]);
-        const attacksRes = await pool.query("SELECT * FROM attack_logs WHERE source_ip = $1 ORDER BY timestamp DESC LIMIT 50", [ip]);
-        
-        if (profileRes.rows.length > 0) {
-          const profile = profileRes.rows[0];
-          const calculatedThreatScore = calculateThreatScore(profile, attacksRes.rows);
+        try {
+          const profileRes = await pool.query("SELECT * FROM attacker_profiles WHERE ip = $1", [ip]);
+          const attacksRes = await pool.query("SELECT * FROM attack_logs WHERE source_ip = $1 ORDER BY timestamp DESC LIMIT 50", [ip]);
+          
+          if (profileRes?.rows?.length > 0) {
+            const profile = profileRes.rows[0];
+            const calculatedThreatScore = calculateThreatScore(profile, attacksRes?.rows || []);
+            return {
+              ...attacker,
+              threat_score: profile.threat_score || 0,
+              calculatedThreatScore: calculatedThreatScore || 0,
+              country: profile.country || 'Unknown',
+              city: profile.city || 'Unknown'
+            };
+          }
           return {
             ...attacker,
-            threat_score: profile.threat_score,
-            calculatedThreatScore,
-            country: profile.country,
-            city: profile.city
+            threat_score: 0,
+            calculatedThreatScore: 0,
+            country: 'Unknown',
+            city: 'Unknown'
+          };
+        } catch (err) {
+          console.error(`Error fetching details for IP ${ip}:`, err.message);
+          return {
+            ...attacker,
+            threat_score: 0,
+            calculatedThreatScore: 0,
+            country: 'Unknown',
+            city: 'Unknown'
           };
         }
-        return {
-          ...attacker,
-          threat_score: 0,
-          calculatedThreatScore: 0
-        };
       })
     );
 
     res.json({
       success: true,
       data: {
-        totalEvents: parseInt(totalEvents.rows[0].total),
-        recentActivity: parseInt(recentActivity.rows[0].count), // last 10 mins
-        threatScore, // 0–100 for gauge
-        attackBreakdown: attackBreakdown.rows, // [{attack_type, count}]
-        severityBreakdown: severityBreakdown.rows, // [{severity, count}]
-        timeline: timelineData.rows, // [{hour, count}]
+        totalEvents: parseInt(totalEvents?.rows?.[0]?.total) || 0,
+        recentActivity: parseInt(recentActivity?.rows?.[0]?.count) || 0, // last 10 mins
+        threatScore: isNaN(threatScore) ? 0 : threatScore, // 0–100 for gauge
+        attackBreakdown: attackBreakdown?.rows || [], // [{attack_type, count}]
+        severityBreakdown: severityBreakdown?.rows || [], // [{severity_label, count}]
+        timeline: timelineData?.rows || [], // [{hour, count}]
         topAttackers: topAttackersDetailed, // [{source_ip, count, threat_score, calculatedThreatScore, country, city}]
-        topCountries: topCountries.rows, // [{country, count}]
+        topCountries: topCountries?.rows || [], // [{country, count}]
       },
     });
   } catch (err) {

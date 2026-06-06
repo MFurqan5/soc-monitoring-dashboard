@@ -11,7 +11,7 @@ import HoneytokenPanel from "./components/HoneytokenPanel";
 import api from "./services/api";
 import "./index.css";
 
-const SOCKET_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const SOCKET_URL = process.env.REACT_APP_API_URL || "http://localhost:4000";
 
 export default function App() {
   const [events, setEvents] = useState([]);
@@ -98,10 +98,10 @@ export default function App() {
   // ─── Auto Refresh Setup ───
   useEffect(() => {
     if (autoRefresh && !socketConnected) {
-      // Poll every 5 seconds if socket is not connected
+      // Poll every 3 seconds if socket is not connected
       refreshIntervalRef.current = setInterval(() => {
         fetchAll();
-      }, 5000);
+      }, 3000);
     } else if (refreshIntervalRef.current) {
       clearInterval(refreshIntervalRef.current);
       refreshIntervalRef.current = null;
@@ -276,7 +276,7 @@ export default function App() {
               {socketConnected ? "LIVE MONITORING" : "POLLING MODE"}
               {!socketConnected && autoRefresh && (
                 <span style={{ marginLeft: "8px", fontSize: "10px" }}>
-                  (auto-refresh every 5s)
+                  (auto-refresh every 3s)
                 </span>
               )}
             </div>

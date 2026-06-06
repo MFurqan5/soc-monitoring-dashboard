@@ -93,7 +93,7 @@ const mockDb = {
 // Simulate pg.Pool interface with mock data
 class MockPool {
   async query(sql, params = []) {
-    // Simple mock - just returns relevant mock data based on table name
+    // Simple mock - returns relevant mock data based on table name
     if (sql.includes('SELECT * FROM attack_logs')) {
       return { rows: mockDb.attack_logs, command: 'SELECT' };
     }
@@ -103,33 +103,52 @@ class MockPool {
     if (sql.includes('COUNT(*) AS total FROM attack_logs')) {
       return { rows: [{ total: mockDb.attack_logs.length }], command: 'SELECT' };
     }
-    if (sql.includes('attack_type')) {
+    if (sql.includes('attack_type') && sql.includes('GROUP BY')) {
       const grouped = {};
       mockDb.attack_logs.forEach(log => {
         grouped[log.attack_type] = (grouped[log.attack_type] || 0) + 1;
       });
       return { rows: Object.entries(grouped).map(([k, v]) => ({ attack_type: k, count: v })), command: 'SELECT' };
     }
-    if (sql.includes('severity')) {
+    // FIXED: Return 'severity_label' instead of 'severity'
+    if (sql.includes('severity_label') && sql.includes('GROUP BY')) {
       const grouped = {};
       mockDb.attack_logs.forEach(log => {
         grouped[log.severity_label] = (grouped[log.severity_label] || 0) + 1;
       });
-      return { rows: Object.entries(grouped).map(([k, v]) => ({ severity: k, count: v })), command: 'SELECT' };
+      return { rows: Object.entries(grouped).map(([k, v]) => ({ severity_label: k, count: v })), command: 'SELECT' };
     }
-    if (sql.includes('source_ip, COUNT(*)')) {
+    // Handle timeline query with DATE_TRUNC
+    if (sql.includes('DATE_TRUNC') || (sql.includes('timestamp') && sql.includes('GROUP BY hour'))) {
+      const timeline = [];
+      const now = new Date();
+      for (let i = 23; i >= 0; i--) {
+        const hour = new Date(now.getTime() - i * 3600000);
+        timeline.push({
+          hour: hour.toISOString(),
+          count: Math.floor(Math.random() * 15) + 1
+        });
+      }
+      return { rows: timeline, command: 'SELECT' };
+    }
+    if (sql.includes('source_ip, COUNT(*)') && sql.includes('GROUP BY source_ip')) {
       const grouped = {};
       mockDb.attack_logs.forEach(log => {
         grouped[log.source_ip] = (grouped[log.source_ip] || 0) + 1;
       });
       return { rows: Object.entries(grouped).map(([ip, count]) => ({ source_ip: ip, count })).sort((a, b) => b.count - a.count).slice(0, 5), command: 'SELECT' };
     }
-    if (sql.includes('country') && sql.includes('attacker_profiles')) {
+    if (sql.includes('country') && sql.includes('attacker_profiles') && sql.includes('GROUP BY country')) {
       const grouped = {};
       mockDb.attacker_profiles.forEach(p => {
         if (p.country) grouped[p.country] = (grouped[p.country] || 0) + 1;
       });
       return { rows: Object.entries(grouped).map(([c, count]) => ({ country: c, count })).sort((a, b) => b.count - a.count).slice(0, 5), command: 'SELECT' };
+    }
+    // Handle recent activity (last 10 minutes)
+    if (sql.includes('NOW() - INTERVAL') && sql.includes('COUNT(*)')) {
+      // Return random count between 5 and 30 for recent activity
+      return { rows: [{ count: Math.floor(Math.random() * 25) + 5 }], command: 'SELECT' };
     }
     if (sql.includes('honeytokels') || sql.includes('honeytokens')) {
       return { rows: mockDb.honeytokels, command: 'SELECT' };
@@ -150,7 +169,7 @@ class MockPool {
       const profile = mockDb.attacker_profiles.find(p => p.ip === ip);
       return { rows: profile ? [profile] : [], command: 'SELECT' };
     }
-    // Default
+    // Default return empty rows
     return { rows: [], command: 'SELECT' };
   }
 }
