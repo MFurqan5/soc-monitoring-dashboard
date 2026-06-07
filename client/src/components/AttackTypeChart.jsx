@@ -129,6 +129,7 @@ export default function AttackTypeChart({ data }) {
           outerRadius={80}
           paddingAngle={3}
           dataKey="count"
+          isAnimationActive={false}
         >
           {chartData.map((entry, index) => (
             <Cell key={index} fill={entry.fill} stroke="transparent" />

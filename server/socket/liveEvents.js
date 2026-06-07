@@ -30,6 +30,7 @@ function initSocket(httpServer) {
       pool.query(`
         SELECT attack_type, COUNT(*) AS count
         FROM attack_logs
+        WHERE attack_type IS NOT NULL
         GROUP BY attack_type
         ORDER BY count DESC
       `),

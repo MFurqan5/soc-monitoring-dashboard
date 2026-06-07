@@ -27,6 +27,9 @@ export default function App() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const socketRef = useRef(null);
   const refreshIntervalRef = useRef(null);
+  const [screenAlert, setScreenAlert] = useState(null);
+  const [alertedIps, setAlertedIps] = useState(new Set());
+  const [hasLiveAttack, setHasLiveAttack] = useState(false);
 
   // ─── Fetch Events with filters ───
   const fetchEvents = useCallback(async () => {
@@ -97,14 +100,23 @@ export default function App() {
 
   // ─── Auto Refresh Setup ───
   useEffect(() => {
-    if (autoRefresh && !socketConnected) {
-      // Poll every 3 seconds if socket is not connected
-      refreshIntervalRef.current = setInterval(() => {
-        fetchAll();
-      }, 3000);
-    } else if (refreshIntervalRef.current) {
+    if (refreshIntervalRef.current) {
       clearInterval(refreshIntervalRef.current);
       refreshIntervalRef.current = null;
+    }
+
+    if (autoRefresh) {
+      if (hasLiveAttack) {
+        // Poll every 1 second continuously if live attack occurred
+        refreshIntervalRef.current = setInterval(() => {
+          fetchAll();
+        }, 1000);
+      } else if (!socketConnected) {
+        // Poll every 3 seconds if socket is not connected
+        refreshIntervalRef.current = setInterval(() => {
+          fetchAll();
+        }, 3000);
+      }
     }
 
     return () => {
@@ -112,7 +124,7 @@ export default function App() {
         clearInterval(refreshIntervalRef.current);
       }
     };
-  }, [autoRefresh, socketConnected, fetchAll]);
+  }, [autoRefresh, socketConnected, hasLiveAttack, fetchAll]);
 
   // ─── Socket.io Connection ───
   useEffect(() => {
@@ -150,9 +162,39 @@ export default function App() {
     socket.on("new_attack", (data) => {
       console.log("📡 New attack received:", data);
       
+      // Trigger continuous 1-second live refreshes
+      setHasLiveAttack(true);
+
       // Handle both single attack and batch events
       const newEvents = data.events || [data];
       
+      // Screen Alert for new attacker IP
+      const firstEvent = newEvents[0];
+      const sourceIp = firstEvent?.source_ip;
+      if (sourceIp) {
+        setAlertedIps((prev) => {
+          if (!prev.has(sourceIp)) {
+            const updated = new Set(prev);
+            updated.add(sourceIp);
+            
+            // Trigger overlay state
+            setScreenAlert({
+              ip: sourceIp,
+              type: firstEvent.attack_type?.toUpperCase() || "THREAT",
+              path: firstEvent.path || "/"
+            });
+
+            // Auto-dismiss warning after 7 seconds
+            setTimeout(() => {
+              setScreenAlert(null);
+            }, 7000);
+
+            return updated;
+          }
+          return prev;
+        });
+      }
+
       setEvents((prev) => {
         // Remove duplicates by ID
         const existingIds = new Set(prev.map(e => e.id));
@@ -257,6 +299,82 @@ export default function App() {
     <>
       <title>SOC Dashboard — SecureBank</title>
       <meta name="description" content="Real-time Security Operations Center Dashboard" />
+
+      {/* Fullscreen Transparent Red Attack Alert Overlay */}
+      {screenAlert && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100vw",
+          height: "100vh",
+          backgroundColor: "rgba(248, 81, 73, 0.15)",
+          backdropFilter: "blur(8px)",
+          border: "4px solid rgba(248, 81, 73, 0.4)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: 9999,
+          pointerEvents: "none",
+          animation: "overlayPulse 1.5s infinite alternate"
+        }}>
+          <div style={{
+            backgroundColor: "rgba(13, 17, 23, 0.95)",
+            border: "2px solid #f85149",
+            borderRadius: "12px",
+            padding: "40px 60px",
+            boxShadow: "0 0 50px rgba(248, 81, 73, 0.6)",
+            textAlign: "center",
+            maxWidth: "600px"
+          }}>
+            <h1 style={{
+              color: "#f85149",
+              fontFamily: "var(--font-mono)",
+              fontSize: "32px",
+              fontWeight: "bold",
+              letterSpacing: "0.1em",
+              margin: 0,
+              textTransform: "uppercase",
+              animation: "blink 1s infinite"
+            }}>
+              🚨 ATTACK DETECTED 🚨
+            </h1>
+            <p style={{
+              color: "var(--text-primary)",
+              fontFamily: "var(--font-ui)",
+              fontSize: "18px",
+              marginTop: "20px",
+              marginBottom: "10px"
+            }}>
+              A security threat has been intercepted on SecureBank!
+            </p>
+            <div style={{
+              background: "rgba(248, 81, 73, 0.08)",
+              border: "1px solid rgba(248, 81, 73, 0.2)",
+              borderRadius: "6px",
+              padding: "16px",
+              marginTop: "16px",
+              fontFamily: "var(--font-mono)",
+              fontSize: "13px",
+              textAlign: "left",
+              color: "var(--text-secondary)"
+            }}>
+              <div><strong style={{ color: "#f85149" }}>Attacker IP:</strong> {screenAlert.ip}</div>
+              <div><strong style={{ color: "#f85149" }}>Attack Type:</strong> {screenAlert.type}</div>
+              <div><strong style={{ color: "#f85149" }}>Endpoint:</strong> {screenAlert.path}</div>
+            </div>
+            <p style={{
+              color: "var(--text-muted)",
+              fontSize: "11px",
+              fontFamily: "var(--font-mono)",
+              marginTop: "20px",
+              marginBottom: 0
+            }}>
+              This notification will automatically dismiss in 7 seconds.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="soc-root">
         {/* Header */}
@@ -430,6 +548,22 @@ export default function App() {
             opacity: 1;
             transform: translateY(0);
           }
+        }
+        
+        @keyframes overlayPulse {
+          from {
+            background-color: rgba(248, 81, 73, 0.1);
+            border-color: rgba(248, 81, 73, 0.3);
+          }
+          to {
+            background-color: rgba(248, 81, 73, 0.25);
+            border-color: rgba(248, 81, 73, 0.6);
+          }
+        }
+
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
         }
         
         .soc-auto-refresh-btn {

@@ -2,7 +2,7 @@
 
 export default function StatsBar({ stats }) {
   const criticalCount =
-    stats.severityBreakdown?.find((s) => s.severity === "CRITICAL")?.count ?? 0;
+    stats.severityBreakdown?.find((s) => s.severity === "CRITICAL" || s.severity_label === "CRITICAL")?.count ?? 0;
   const recentCount = stats.recentActivity ?? 0;
 
   const items = [

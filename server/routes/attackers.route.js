@@ -45,7 +45,9 @@ router.get("/", async (req, res) => {
         sqli_count,
         xss_count,
         bruteforce_count,
-        traversal_count
+        traversal_count,
+        latitude,
+        longitude
       FROM attacker_profiles
       ${whereClause}
       ORDER BY threat_score DESC, last_seen DESC
