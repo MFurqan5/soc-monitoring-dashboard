@@ -11,9 +11,22 @@ function initSocket(httpServer) {
 
   console.log("✓ Socket.io server initialised");
 
-  // Keep track of timestamps for changes
-  let lastAttackCheck = new Date();
+  // Keep track of latest processed IDs/timestamps
+  let lastAttackId = 0;
+  let isAttackIdInitialized = false;
   let lastHoneytokenCheck = new Date();
+
+  // Fetch latest attack ID at startup to avoid alerting on old attacks
+  pool.query("SELECT MAX(id) AS max_id FROM attack_logs")
+    .then(res => {
+      lastAttackId = parseInt(res.rows[0]?.max_id) || 0;
+      isAttackIdInitialized = true;
+      console.log(`✓ Socket polling: initialized lastAttackId to ${lastAttackId}`);
+    })
+    .catch(err => {
+      console.error("Error initializing lastAttackId:", err.message);
+    });
+
 
   // Helper to fetch statistics payload
   async function getStatsPayload() {
@@ -133,18 +146,26 @@ function initSocket(httpServer) {
   // 1. Attack Log Polling (Every 3 seconds)
   setInterval(async () => {
     try {
+      if (!isAttackIdInitialized) {
+        // Try initializing again if it failed
+        const maxRes = await pool.query("SELECT MAX(id) AS max_id FROM attack_logs");
+        lastAttackId = parseInt(maxRes.rows[0]?.max_id) || 0;
+        isAttackIdInitialized = true;
+        return;
+      }
+
       const query = `
         SELECT * FROM attack_logs 
-        WHERE timestamp > $1 
-        ORDER BY timestamp ASC
+        WHERE id > $1 
+        ORDER BY id ASC
       `;
-      const result = await pool.query(query, [lastAttackCheck]);
+      const result = await pool.query(query, [lastAttackId]);
 
       if (result.rows.length > 0) {
         // Emit new attacks to all connected clients
         io.emit("new_attack", { events: result.rows });
-        // Update last check to the timestamp of the latest event
-        lastAttackCheck = new Date(result.rows[result.rows.length - 1].timestamp);
+        // Update last check to the ID of the latest event
+        lastAttackId = result.rows[result.rows.length - 1].id;
       }
     } catch (err) {
       console.error("[Socket polling] attack_logs error:", err.message);
@@ -176,7 +197,8 @@ function initSocket(httpServer) {
             severity: alert.severity || 'CRITICAL'
           });
         });
-        lastHoneytokenCheck = new Date(result.rows[result.rows.length - 1].triggeredAt);
+        // Avoid precision comparison loop by adding 1ms
+        lastHoneytokenCheck = new Date(new Date(result.rows[result.rows.length - 1].triggeredAt).getTime() + 1);
       }
     } catch (err) {
       console.error("[Socket polling] honeytoken_alerts error:", err.message);

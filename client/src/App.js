@@ -168,10 +168,10 @@ export default function App() {
       // Handle both single attack and batch events
       const newEvents = data.events || [data];
       
-      // Screen Alert for new attacker IP
-      const firstEvent = newEvents[0];
-      const sourceIp = firstEvent?.source_ip;
-      if (sourceIp) {
+      // Screen Alert for new attacker IP (only alert on real attacks, not normal page loads)
+      const firstEvent = newEvents.find(e => e.attack_type);
+      if (firstEvent && firstEvent.source_ip) {
+        const sourceIp = firstEvent.source_ip;
         setAlertedIps((prev) => {
           if (!prev.has(sourceIp)) {
             const updated = new Set(prev);
